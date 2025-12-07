@@ -626,6 +626,25 @@ body::before {
     color: white;
 }
 
+.view-divider {
+    width: 1px;
+    height: 40px;
+    background: var(--border-color);
+    margin: 0 5px;
+}
+
+.view-btn-settings {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05));
+    border-color: rgba(245, 158, 11, 0.3);
+    color: var(--warning);
+}
+
+.view-btn-settings:hover {
+    background: linear-gradient(135deg, var(--warning), #d97706);
+    border-color: transparent;
+    color: white;
+}
+
 /* ========================================
    Table View
 ======================================== */
@@ -716,6 +735,65 @@ tbody tr:hover {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
     gap: 20px;
+}
+
+/* Personal View Header with Filters */
+.personal-view-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.personal-view-header .section-title {
+    margin-bottom: 0;
+}
+
+.personal-filters {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.search-input {
+    padding: 10px 15px;
+    background: var(--bg-glass);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.95rem;
+    min-width: 200px;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.search-input::placeholder {
+    color: var(--text-muted);
+}
+
+.shift-filter-select {
+    padding: 10px 15px;
+    background: var(--bg-glass);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.95rem;
+    min-width: 150px;
+    cursor: pointer;
+}
+
+.shift-filter-select:focus {
+    outline: none;
+    border-color: var(--primary);
 }
 
 .person-card {
@@ -1499,6 +1577,33 @@ tbody tr:hover {
     border-color: transparent;
 }
 
+.employee-shift-select {
+    padding: 8px 15px;
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.95rem;
+    min-width: 200px;
+    cursor: pointer;
+}
+
+.employee-shift-select:focus {
+    border-color: var(--primary);
+    outline: none;
+}
+
+.current-shift-indicator {
+    font-size: 0.85rem;
+    color: var(--success);
+    font-weight: 500;
+}
+
+.current-shift-indicator.custom {
+    color: var(--warning);
+}
+
 /* Global Shift Settings Modal */
 .shift-note {
     color: var(--text-secondary);
@@ -1585,5 +1690,260 @@ tbody tr:hover {
     .shift-form-row {
         flex-direction: column;
         align-items: flex-start;
+    }
+}
+
+/* ========================================
+   Shift Settings View
+======================================== */
+.shift-view-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.shift-view-header .section-title {
+    margin-bottom: 0;
+}
+
+.shift-presets-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.shift-preset-card {
+    background: var(--bg-glass);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.shift-preset-card:hover {
+    border-color: var(--primary);
+    transform: translateY(-3px);
+    box-shadow: var(--shadow);
+}
+
+.shift-preset-card.default {
+    border-color: var(--warning);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05));
+}
+
+.shift-preset-card .default-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: var(--warning);
+    color: #000;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 10px;
+}
+
+.shift-preset-icon {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+}
+
+.shift-preset-name {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+}
+
+.shift-preset-times {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.shift-time-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.shift-time-info .label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.shift-time-info .value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.shift-preset-details {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-color);
+}
+
+.shift-detail-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.shift-detail-item .value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.shift-preset-card .edit-hint {
+    position: absolute;
+    bottom: 10px;
+    right: 15px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.shift-preset-card:hover .edit-hint {
+    opacity: 1;
+}
+
+/* Edit Shift Form */
+.shift-edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.shift-form-group-full {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.shift-form-group-full input[type="text"] {
+    width: 100%;
+    padding: 12px 15px;
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 1rem;
+}
+
+.shift-form-group-full input[type="text"]:focus {
+    border-color: var(--primary);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.icon-select {
+    padding: 10px 15px;
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 1rem;
+    min-width: 180px;
+}
+
+.time-select {
+    padding: 10px 15px;
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.95rem;
+    min-width: 180px;
+    cursor: pointer;
+}
+
+.time-select:focus {
+    border-color: var(--primary);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.time-select option {
+    background: #1a1a2e;
+    color: var(--text-primary);
+    padding: 10px;
+}
+
+.time-select option.next-day {
+    color: var(--warning);
+}
+
+.shift-form-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color);
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, var(--danger), #dc2626);
+    color: white;
+}
+
+.btn-danger:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(239, 68, 68, 0.3);
+}
+
+/* Add New Shift Card */
+.shift-preset-card.add-new {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    border-style: dashed;
+    border-color: var(--text-muted);
+    background: transparent;
+}
+
+.shift-preset-card.add-new:hover {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.05);
+}
+
+.shift-preset-card.add-new .add-icon {
+    font-size: 2.5rem;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+.shift-preset-card.add-new .add-text {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+@media (max-width: 768px) {
+    .shift-view-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .shift-form-actions {
+        flex-direction: column;
+    }
+
+    .shift-form-actions .btn {
+        width: 100%;
     }
 }

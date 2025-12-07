@@ -6,22 +6,27 @@ let filteredRecords = [];
 let employees = new Map();
 let dates = new Set();
 
-// Shift Configuration
+// Shift Presets (stored in localStorage)
+let shiftPresets = [
+    { id: 1, name: 'กะเช้า', icon: '🌅', startTime: '09:00', endTime: '19:00', workHours: 9, breakHours: 1, isNextDay: false, isDefault: true },
+    { id: 2, name: 'กะกลางคืน', icon: '🌙', startTime: '16:00', endTime: '02:00', workHours: 9, breakHours: 1, isNextDay: true, isDefault: false }
+];
+
+// Current default shift config (calculated from default preset)
 let shiftConfig = {
-    name: 'morning',
-    startTime: '09:00',
-    endTime: '19:00',
     workHours: 9,
     breakHours: 1,
     isNextDay: false
 };
 
-// Preset shifts
-const presetShifts = {
-    morning: { name: 'morning', startTime: '09:00', endTime: '19:00', workHours: 9, breakHours: 1, isNextDay: false },
-    night: { name: 'night', startTime: '16:00', endTime: '02:00', workHours: 9, breakHours: 1, isNextDay: true },
-    day: { name: 'day', startTime: '08:00', endTime: '17:00', workHours: 9, breakHours: 1, isNextDay: false }
-};
+// Individual shift configs (stored per employee in sessionStorage)
+let individualShiftConfigs = {};
+
+// Current employee being viewed in modal
+let currentModalEmployee = null;
+
+// Current preset being edited
+let editingPresetId = null;
 
 // ========================================
 // DOM Elements
@@ -259,23 +264,29 @@ function updateStats() {
 // View Switching
 // ========================================
 function showSections() {
-    document.getElementById('shiftSection').style.display = 'block';
     filterSection.style.display = 'block';
     statsSection.style.display = 'grid';
     viewToggle.style.display = 'flex';
-    tableView.style.display = 'block';
+    personalView.style.display = 'block';
+    populateShiftFilter();
+    renderPersonalView();
 }
 
 function switchView(view) {
+    const shiftViewBtn = document.getElementById('shiftViewBtn');
+    const shiftView = document.getElementById('shiftView');
+
     // Update button states
     tableViewBtn.classList.remove('active');
     personalViewBtn.classList.remove('active');
     timelineViewBtn.classList.remove('active');
+    if (shiftViewBtn) shiftViewBtn.classList.remove('active');
 
     // Hide all views
     tableView.style.display = 'none';
     personalView.style.display = 'none';
     timelineView.style.display = 'none';
+    if (shiftView) shiftView.style.display = 'none';
 
     switch (view) {
         case 'table':
@@ -293,16 +304,25 @@ function switchView(view) {
             timelineView.style.display = 'block';
             renderTimelineView();
             break;
+        case 'shift':
+            if (shiftViewBtn) shiftViewBtn.classList.add('active');
+            if (shiftView) shiftView.style.display = 'block';
+            renderShiftView();
+            break;
     }
 }
 
 function renderCurrentView() {
+    const shiftViewBtn = document.getElementById('shiftViewBtn');
+
     if (tableViewBtn.classList.contains('active')) {
         renderTableView();
     } else if (personalViewBtn.classList.contains('active')) {
         renderPersonalView();
     } else if (timelineViewBtn.classList.contains('active')) {
         renderTimelineView();
+    } else if (shiftViewBtn && shiftViewBtn.classList.contains('active')) {
+        renderShiftView();
     }
 }
 
@@ -346,9 +366,33 @@ function determineStatus(record) {
 // ========================================
 // Personal View Rendering
 // ========================================
+function populateShiftFilter() {
+    const select = document.getElementById('shiftFilter');
+    if (!select) return;
+
+    // Keep first option
+    select.innerHTML = '<option value="">ทุกกะ</option>';
+    select.innerHTML += '<option value="default">ใช้ค่าเริ่มต้น</option>';
+
+    // Add presets
+    shiftPresets.forEach(preset => {
+        const opt = document.createElement('option');
+        opt.value = preset.id.toString();
+        opt.textContent = `${preset.icon} ${preset.name}`;
+        select.appendChild(opt);
+    });
+}
+
 function renderPersonalView() {
     const container = document.getElementById('personalCards');
+    const searchInput = document.getElementById('employeeSearch');
+    const shiftFilter = document.getElementById('shiftFilter');
+
     container.innerHTML = '';
+
+    // Get filter values
+    const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    const selectedShift = shiftFilter ? shiftFilter.value : '';
 
     // Group filtered records by employee
     const employeeRecords = new Map();
@@ -362,8 +406,28 @@ function renderPersonalView() {
         employeeRecords.get(record.userId).records.push(record);
     });
 
-    // Create cards for each employee
+    // Filter and create cards for each employee
+    let visibleCount = 0;
     employeeRecords.forEach((emp, userId) => {
+        // Apply search filter
+        if (searchTerm && !emp.name.toLowerCase().includes(searchTerm) && !userId.includes(searchTerm)) {
+            return;
+        }
+
+        // Apply shift filter
+        if (selectedShift) {
+            const empConfig = individualShiftConfigs[userId];
+            if (selectedShift === 'default') {
+                // Show only employees using default
+                if (empConfig && empConfig.presetId) return;
+            } else {
+                // Show only employees using this specific preset
+                const presetId = parseInt(selectedShift);
+                if (!empConfig || empConfig.presetId !== presetId) return;
+            }
+        }
+
+        visibleCount++;
         const card = document.createElement('div');
         card.className = 'person-card animate-slide-up clickable';
         card.setAttribute('data-user-id', userId);
@@ -408,8 +472,77 @@ function openEmployeeModal(userId, emp) {
     const modalId = document.getElementById('modalEmployeeId');
     const tbody = document.getElementById('employeeDetailBody');
 
+    // Store current employee for individual shift settings
+    currentModalEmployee = { userId, emp };
+
     modalName.textContent = emp.name;
     modalId.textContent = `ID: ${userId}`;
+
+    // Load individual shift config or use global default
+    const empShiftConfig = getEmployeeShiftConfig(userId);
+
+    // Update modal shift settings UI (populate dropdown)
+    updateModalShiftUI(userId);
+
+    // Render the attendance table
+    renderEmployeeAttendanceTable(userId, emp, empShiftConfig);
+
+    // Show modal
+    modal.classList.add('active');
+}
+
+function getEmployeeShiftConfig(userId) {
+    // Check individual config first
+    if (individualShiftConfigs[userId]) {
+        return individualShiftConfigs[userId];
+    }
+    // Fall back to global config (default preset)
+    return { ...shiftConfig };
+}
+
+function updateModalShiftUI(userId) {
+    const select = document.getElementById('employeeShiftSelect');
+    const indicator = document.getElementById('currentShiftIndicator');
+    if (!select) return;
+
+    // Clear and populate options
+    select.innerHTML = '';
+
+    // Add "ใช้ค่าเริ่มต้น" option
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = 'default';
+    const defaultPreset = shiftPresets.find(p => p.isDefault);
+    defaultOpt.textContent = `ค่าเริ่มต้น (${defaultPreset ? defaultPreset.name : 'กะเช้า'})`;
+    select.appendChild(defaultOpt);
+
+    // Add preset options
+    shiftPresets.forEach(preset => {
+        const opt = document.createElement('option');
+        opt.value = preset.id.toString();
+        opt.textContent = `${preset.icon} ${preset.name} (${preset.startTime} - ${preset.endTime}${preset.isNextDay ? ' +1' : ''})`;
+        select.appendChild(opt);
+    });
+
+    // Check if employee has individual config
+    const individualConfig = individualShiftConfigs[userId];
+    if (individualConfig && individualConfig.presetId) {
+        select.value = individualConfig.presetId.toString();
+        indicator.textContent = '✓ กำหนดเอง';
+        indicator.className = 'current-shift-indicator custom';
+    } else {
+        select.value = 'default';
+        indicator.textContent = '';
+        indicator.className = 'current-shift-indicator';
+    }
+
+    // Add change handler
+    select.onchange = function () {
+        applyEmployeeShiftFromSelect(userId);
+    };
+}
+
+function renderEmployeeAttendanceTable(userId, emp, empShiftConfig) {
+    const tbody = document.getElementById('employeeDetailBody');
 
     // Group records by date
     const dateRecords = new Map();
@@ -432,7 +565,7 @@ function openEmployeeModal(userId, emp) {
 
     sortedDates.forEach(date => {
         const times = dateRecords.get(date);
-        const processed = processTimesForDay(times);
+        const processed = processTimesForDay(times, empShiftConfig);
 
         totalOTMinutes += processed.otMinutes;
 
@@ -451,12 +584,9 @@ function openEmployeeModal(userId, emp) {
     // Update totals
     document.getElementById('totalDaysWorked').textContent = `${sortedDates.length} วัน`;
     document.getElementById('totalOT').textContent = formatOT(totalOTMinutes);
-
-    // Show modal
-    modal.classList.add('active');
 }
 
-function processTimesForDay(times) {
+function processTimesForDay(times, empShiftConfig) {
     // Sort times
     times.sort();
 
@@ -491,7 +621,7 @@ function processTimesForDay(times) {
 
     // Calculate OT based on shift configuration
     if (clockOut) {
-        otMinutes = calculateOT(clockIn, clockOut);
+        otMinutes = calculateOT(clockIn, clockOut, empShiftConfig);
     }
 
     return {
@@ -505,8 +635,10 @@ function processTimesForDay(times) {
 }
 
 // Calculate OT based on shift configuration
-function calculateOT(clockIn, clockOut) {
+function calculateOT(clockIn, clockOut, empShiftConfig) {
     if (!clockIn || !clockOut) return 0;
+
+    const config = empShiftConfig || shiftConfig;
 
     // Parse clock in time
     const [inHours, inMinutes] = clockIn.split(':').map(Number);
@@ -517,7 +649,7 @@ function calculateOT(clockIn, clockOut) {
     let clockOutMinutes = outHours * 60 + outMinutes;
 
     // For next day shifts (e.g., night shift), adjust clock out time
-    if (shiftConfig.isNextDay && outHours < 12) {
+    if (config.isNextDay && outHours < 12) {
         // Clock out is after midnight, add 24 hours
         clockOutMinutes += 24 * 60;
     }
@@ -526,7 +658,7 @@ function calculateOT(clockIn, clockOut) {
     const totalWorkMinutes = clockOutMinutes - clockInMinutes;
 
     // Calculate expected work time (work hours + break hours) in minutes
-    const expectedWorkMinutes = (shiftConfig.workHours + shiftConfig.breakHours) * 60;
+    const expectedWorkMinutes = (config.workHours + config.breakHours) * 60;
 
     // OT = total work time - expected work time
     const otMinutes = totalWorkMinutes - expectedWorkMinutes;
@@ -770,7 +902,7 @@ function initShiftSettings() {
             const preset = presetShifts[shiftType];
             if (preset) {
                 applyPreset(preset);
-                saveShiftSettings();
+                saveShiftSettings(); ใ
 
                 // Update active state
                 presetBtns.forEach(b => b.classList.remove('active'));
@@ -815,39 +947,24 @@ function applyShiftToUI() {
     if (nextDayCheckbox) nextDayCheckbox.checked = shiftConfig.isNextDay;
     if (workHours) workHours.value = shiftConfig.workHours;
     if (breakHours) breakHours.value = shiftConfig.breakHours;
+    if (nextDayCheckbox) nextDayCheckbox.checked = shiftConfig.isNextDay;
 
-    updateOTDisplay();
-
-    // Update preset button active state
-    const presetBtns = document.querySelectorAll('.preset-btn');
-    presetBtns.forEach(btn => {
-        if (btn.dataset.shift === shiftConfig.name) {
-            btn.classList.add('active');
-        }
-    });
+    updateCurrentShiftLabel();
 }
 
-function updateOTDisplay() {
-    const shiftEnd = document.getElementById('shiftEnd');
-    const otStartDisplay = document.getElementById('otStartDisplay');
-
-    if (shiftEnd && otStartDisplay) {
-        otStartDisplay.textContent = shiftEnd.value || '19:00';
+function updateCurrentShiftLabel() {
+    const label = document.getElementById('currentShiftLabel');
+    if (label) {
+        label.textContent = `${shiftConfig.workHours} ชม. + พัก ${shiftConfig.breakHours} ชม.${shiftConfig.isNextDay ? ' (ข้ามวัน)' : ''}`;
     }
 }
 
-function saveShiftSettings() {
-    const shiftSelect = document.getElementById('shiftSelect');
-    const shiftStart = document.getElementById('shiftStart');
-    const shiftEnd = document.getElementById('shiftEnd');
-    const nextDayCheckbox = document.getElementById('nextDayCheckbox');
-    const workHours = document.getElementById('workHours');
-    const breakHours = document.getElementById('breakHours');
+function saveGlobalShiftSettings() {
+    const workHours = document.getElementById('globalWorkHours');
+    const breakHours = document.getElementById('globalBreakHours');
+    const nextDayCheckbox = document.getElementById('globalNextDay');
 
     shiftConfig = {
-        name: shiftSelect ? shiftSelect.value : 'morning',
-        startTime: shiftStart ? shiftStart.value : '09:00',
-        endTime: shiftEnd ? shiftEnd.value : '19:00',
         workHours: workHours ? parseFloat(workHours.value) : 9,
         breakHours: breakHours ? parseFloat(breakHours.value) : 1,
         isNextDay: nextDayCheckbox ? nextDayCheckbox.checked : false
@@ -856,11 +973,87 @@ function saveShiftSettings() {
     // Save to localStorage
     localStorage.setItem('shiftConfig', JSON.stringify(shiftConfig));
 
+    // Update label
+    updateCurrentShiftLabel();
+
+    // Close modal
+    closeShiftSettingsModal();
+
     // Show toast notification
     showToast('✅ บันทึกการตั้งค่ากะสำเร็จ!');
 
     // Re-render views to apply new OT calculation
     renderCurrentView();
+}
+
+function openShiftSettingsModal() {
+    const modal = document.getElementById('shiftSettingsModal');
+    const workHours = document.getElementById('globalWorkHours');
+    const breakHours = document.getElementById('globalBreakHours');
+    const nextDayCheckbox = document.getElementById('globalNextDay');
+
+    // Load current values
+    if (workHours) workHours.value = shiftConfig.workHours;
+    if (breakHours) breakHours.value = shiftConfig.breakHours;
+    if (nextDayCheckbox) nextDayCheckbox.checked = shiftConfig.isNextDay;
+
+    modal.classList.add('active');
+}
+
+function closeShiftSettingsModal() {
+    const modal = document.getElementById('shiftSettingsModal');
+    modal.classList.remove('active');
+}
+
+// ========================================
+// Individual Shift Settings Functions
+// ========================================
+function applyEmployeeShiftFromSelect(userId) {
+    if (!currentModalEmployee) return;
+
+    const select = document.getElementById('employeeShiftSelect');
+    const indicator = document.getElementById('currentShiftIndicator');
+    if (!select) return;
+
+    const { emp } = currentModalEmployee;
+    const selectedValue = select.value;
+
+    if (selectedValue === 'default') {
+        // Remove individual config, use default
+        delete individualShiftConfigs[userId];
+        indicator.textContent = '';
+        indicator.className = 'current-shift-indicator';
+    } else {
+        // Find the preset
+        const presetId = parseInt(selectedValue);
+        const preset = shiftPresets.find(p => p.id === presetId);
+
+        if (preset) {
+            individualShiftConfigs[userId] = {
+                presetId: preset.id,
+                workHours: preset.workHours,
+                breakHours: preset.breakHours,
+                isNextDay: preset.isNextDay
+            };
+            indicator.textContent = '✓ กำหนดเอง';
+            indicator.className = 'current-shift-indicator custom';
+        }
+    }
+
+    // Save to sessionStorage
+    sessionStorage.setItem('individualShiftConfigs', JSON.stringify(individualShiftConfigs));
+
+    // Re-render the table with new config
+    const empShiftConfig = getEmployeeShiftConfig(userId);
+    renderEmployeeAttendanceTable(userId, emp, empShiftConfig);
+
+    // Show toast
+    if (selectedValue === 'default') {
+        showToast(`🔄 ${emp.name} ใช้กะเริ่มต้น`);
+    } else {
+        const preset = shiftPresets.find(p => p.id === parseInt(selectedValue));
+        showToast(`✅ ${emp.name} → ${preset ? preset.name : 'กะใหม่'}`);
+    }
 }
 
 function showToast(message) {
@@ -880,3 +1073,415 @@ function showToast(message) {
         toast.remove();
     }, 3000);
 }
+
+// ========================================
+// Additional Event Listeners Setup
+// ========================================
+document.addEventListener('DOMContentLoaded', function () {
+    // Open shift settings modal button
+    const openShiftBtn = document.getElementById('openShiftModal');
+    if (openShiftBtn) {
+        openShiftBtn.addEventListener('click', openShiftSettingsModal);
+    }
+
+    // Close shift settings modal button
+    const shiftModalClose = document.getElementById('shiftModalClose');
+    if (shiftModalClose) {
+        shiftModalClose.addEventListener('click', closeShiftSettingsModal);
+    }
+
+    // Close shift settings modal on backdrop click
+    const shiftSettingsModal = document.getElementById('shiftSettingsModal');
+    if (shiftSettingsModal) {
+        shiftSettingsModal.addEventListener('click', function (e) {
+            if (e.target === shiftSettingsModal) {
+                closeShiftSettingsModal();
+            }
+        });
+    }
+
+    // Save global shift button
+    const saveGlobalBtn = document.getElementById('saveGlobalShift');
+    if (saveGlobalBtn) {
+        saveGlobalBtn.addEventListener('click', saveGlobalShiftSettings);
+    }
+
+    // Global preset buttons in settings modal
+    const globalPresetBtns = document.querySelectorAll('#shiftSettingsModal .preset-btn');
+    globalPresetBtns.forEach(btn => {
+        btn.addEventListener('click', function () {
+            const workHours = this.dataset.work;
+            const breakHours = this.dataset.break;
+            const nextDay = this.dataset.nextday === 'true';
+
+            document.getElementById('globalWorkHours').value = workHours;
+            document.getElementById('globalBreakHours').value = breakHours;
+            document.getElementById('globalNextDay').checked = nextDay;
+
+
+            // Update active state
+            globalPresetBtns.forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+        });
+    });
+
+    // Personal View search and filter
+    const employeeSearch = document.getElementById('employeeSearch');
+    if (employeeSearch) {
+        employeeSearch.addEventListener('input', function () {
+            renderPersonalView();
+        });
+    }
+
+    const shiftFilterSelect = document.getElementById('shiftFilter');
+    if (shiftFilterSelect) {
+        shiftFilterSelect.addEventListener('change', function () {
+            renderPersonalView();
+        });
+    }
+
+    // Load individual configs from sessionStorage
+    const savedIndividualConfigs = sessionStorage.getItem('individualShiftConfigs');
+    if (savedIndividualConfigs) {
+        individualShiftConfigs = JSON.parse(savedIndividualConfigs);
+    }
+
+    // Load shift presets from localStorage
+    const savedPresets = localStorage.getItem('shiftPresets');
+    if (savedPresets) {
+        shiftPresets = JSON.parse(savedPresets);
+    }
+
+    // Update global shiftConfig from default preset
+    updateShiftConfigFromDefault();
+
+    // Shift View button
+    const shiftViewBtn = document.getElementById('shiftViewBtn');
+    if (shiftViewBtn) {
+        shiftViewBtn.addEventListener('click', () => switchView('shift'));
+    }
+
+    // Add New Shift button
+    const addNewShiftBtn = document.getElementById('addNewShiftBtn');
+    if (addNewShiftBtn) {
+        addNewShiftBtn.addEventListener('click', addNewShiftPreset);
+    }
+
+    // Edit Shift Modal close button
+    const editShiftModalClose = document.getElementById('editShiftModalClose');
+    if (editShiftModalClose) {
+        editShiftModalClose.addEventListener('click', closeEditShiftModal);
+    }
+
+    // Edit Shift Modal backdrop click
+    const editShiftModal = document.getElementById('editShiftModal');
+    if (editShiftModal) {
+        editShiftModal.addEventListener('click', function (e) {
+            if (e.target === editShiftModal) {
+                closeEditShiftModal();
+            }
+        });
+    }
+
+    // Save Shift Preset button
+    const saveShiftPresetBtn = document.getElementById('saveShiftPreset');
+    if (saveShiftPresetBtn) {
+        saveShiftPresetBtn.addEventListener('click', saveShiftPreset);
+    }
+
+    // Delete Shift Preset button
+    const deleteShiftPresetBtn = document.getElementById('deleteShiftPreset');
+    if (deleteShiftPresetBtn) {
+        deleteShiftPresetBtn.addEventListener('click', deleteShiftPreset);
+    }
+});
+
+// ========================================
+// Shift View Functions
+// ========================================
+function renderShiftView() {
+    const grid = document.getElementById('shiftPresetsGrid');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+
+    // Render preset cards
+    shiftPresets.forEach(preset => {
+        const card = document.createElement('div');
+        card.className = `shift-preset-card${preset.isDefault ? ' default' : ''}`;
+        card.onclick = () => openEditShiftModal(preset.id);
+
+        card.innerHTML = `
+            ${preset.isDefault ? '<span class="default-badge">ค่าเริ่มต้น</span>' : ''}
+            <div class="shift-preset-icon">${preset.icon}</div>
+            <div class="shift-preset-name">${preset.name}</div>
+            <div class="shift-preset-times">
+                <div class="shift-time-info">
+                    <span class="label">เข้างาน</span>
+                    <span class="value">${preset.startTime}</span>
+                </div>
+                <div class="shift-time-info">
+                    <span class="label">เลิกงาน</span>
+                    <span class="value">${preset.endTime}${preset.isNextDay ? ' (+1)' : ''}</span>
+                </div>
+            </div>
+            <div class="shift-preset-details">
+                <div class="shift-detail-item">
+                    ⏱️ ทำงาน <span class="value">${preset.workHours} ชม.</span>
+                </div>
+                <div class="shift-detail-item">
+                    ☕ พัก <span class="value">${preset.breakHours} ชม.</span>
+                </div>
+            </div>
+            <span class="edit-hint">คลิกเพื่อแก้ไข ✏️</span>
+        `;
+        grid.appendChild(card);
+    });
+
+    // Add "Add New" card
+    const addCard = document.createElement('div');
+    addCard.className = 'shift-preset-card add-new';
+    addCard.onclick = addNewShiftPreset;
+    addCard.innerHTML = `
+        <div class="add-icon">➕</div>
+        <div class="add-text">เพิ่มกะใหม่</div>
+    `;
+    grid.appendChild(addCard);
+}
+
+function openEditShiftModal(presetId) {
+    const preset = shiftPresets.find(p => p.id === presetId);
+    if (!preset) return;
+
+    editingPresetId = presetId;
+
+    // Populate form
+    document.getElementById('shiftPresetName').value = preset.name;
+    document.getElementById('shiftPresetIcon').value = preset.icon;
+    document.getElementById('shiftPresetIsDefault').checked = preset.isDefault;
+
+    // Convert time to select value (handle next day)
+    document.getElementById('shiftPresetStart').value = preset.startTime;
+    document.getElementById('shiftPresetEnd').value = timeToSelectValue(preset.endTime, preset.isNextDay);
+
+    document.getElementById('shiftPresetWorkHours').value = preset.workHours;
+    document.getElementById('shiftPresetBreakHours').value = preset.breakHours;
+
+    // Update modal title
+    document.getElementById('editShiftModalTitle').textContent = '✏️ แก้ไข: ' + preset.name;
+
+    // Show/hide delete button (can't delete if only one preset)
+    const deleteBtn = document.getElementById('deleteShiftPreset');
+    if (deleteBtn) {
+        deleteBtn.style.display = shiftPresets.length > 1 ? 'inline-flex' : 'none';
+    }
+
+    // Show modal
+    document.getElementById('editShiftModal').classList.add('active');
+}
+
+function closeEditShiftModal() {
+    document.getElementById('editShiftModal').classList.remove('active');
+    editingPresetId = null;
+}
+
+function addNewShiftPreset() {
+    const newId = Math.max(...shiftPresets.map(p => p.id), 0) + 1;
+    const newPreset = {
+        id: newId,
+        name: 'กะใหม่',
+        icon: '⏰',
+        startTime: '09:00',
+        endTime: '18:00',
+        workHours: 8,
+        breakHours: 1,
+        isNextDay: false,
+        isDefault: false
+    };
+
+    shiftPresets.push(newPreset);
+    saveShiftPresetsToStorage();
+    renderShiftView();
+    openEditShiftModal(newId);
+}
+
+function saveShiftPreset() {
+    if (!editingPresetId) return;
+
+    const preset = shiftPresets.find(p => p.id === editingPresetId);
+    if (!preset) return;
+
+    // Get form values
+    preset.name = document.getElementById('shiftPresetName').value || 'กะไม่มีชื่อ';
+    preset.icon = document.getElementById('shiftPresetIcon').value;
+    preset.startTime = document.getElementById('shiftPresetStart').value;
+
+    // Parse end time and determine isNextDay
+    const endTimeRaw = document.getElementById('shiftPresetEnd').value;
+    const endTimeData = normalizeTimeForStorage(endTimeRaw);
+    preset.endTime = endTimeData.time;
+    preset.isNextDay = endTimeData.isNextDay;
+
+    preset.workHours = parseFloat(document.getElementById('shiftPresetWorkHours').value) || 8;
+    preset.breakHours = parseFloat(document.getElementById('shiftPresetBreakHours').value) || 1;
+
+    // Handle default setting
+    const isDefault = document.getElementById('shiftPresetIsDefault').checked;
+    if (isDefault) {
+        // Remove default from all others
+        shiftPresets.forEach(p => p.isDefault = false);
+        preset.isDefault = true;
+    } else if (preset.isDefault) {
+        // If this was default but unchecked, keep it as default (can't have no default)
+        preset.isDefault = true;
+    }
+
+    saveShiftPresetsToStorage();
+    updateShiftConfigFromDefault();
+    closeEditShiftModal();
+    renderShiftView();
+    showToast('✅ บันทึกกะ "' + preset.name + '" สำเร็จ!');
+}
+
+function deleteShiftPreset() {
+    if (!editingPresetId || shiftPresets.length <= 1) return;
+
+    const preset = shiftPresets.find(p => p.id === editingPresetId);
+    const presetName = preset ? preset.name : '';
+
+    shiftPresets = shiftPresets.filter(p => p.id !== editingPresetId);
+
+    // If deleted preset was default, make first one default
+    if (preset && preset.isDefault && shiftPresets.length > 0) {
+        shiftPresets[0].isDefault = true;
+    }
+
+    saveShiftPresetsToStorage();
+    updateShiftConfigFromDefault();
+    closeEditShiftModal();
+    renderShiftView();
+    showToast('🗑️ ลบกะ "' + presetName + '" แล้ว');
+}
+
+function saveShiftPresetsToStorage() {
+    localStorage.setItem('shiftPresets', JSON.stringify(shiftPresets));
+}
+
+function updateShiftConfigFromDefault() {
+    const defaultPreset = shiftPresets.find(p => p.isDefault);
+    if (defaultPreset) {
+        shiftConfig = {
+            workHours: defaultPreset.workHours,
+            breakHours: defaultPreset.breakHours,
+            isNextDay: defaultPreset.isNextDay
+        };
+    }
+}
+
+// ========================================
+// Time Dropdown Functions
+// ========================================
+function generateTimeOptions(selectId, includeNextDay = true) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    select.innerHTML = '';
+
+    // Generate times from 00:00 to 23:30 (current day)
+    for (let hour = 0; hour < 24; hour++) {
+        for (let min = 0; min < 60; min += 30) {
+            const timeStr = `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
+            const displayStr = formatTimeDisplay(hour, min);
+            const option = document.createElement('option');
+            option.value = timeStr;
+            option.textContent = displayStr;
+            select.appendChild(option);
+        }
+    }
+
+    // Add next day times (00:00 to 08:00 next day) if enabled
+    if (includeNextDay) {
+        const separator = document.createElement('option');
+        separator.disabled = true;
+        separator.textContent = '── วันถัดไป ──';
+        select.appendChild(separator);
+
+        for (let hour = 0; hour <= 8; hour++) {
+            for (let min = 0; min < 60; min += 30) {
+                if (hour === 8 && min > 0) break; // Stop at 08:00
+                const timeStr = `${(hour + 24).toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
+                const displayStr = formatTimeDisplay(hour, min) + ' (วันถัดไป)';
+                const option = document.createElement('option');
+                option.value = timeStr;
+                option.textContent = displayStr;
+                option.className = 'next-day';
+                select.appendChild(option);
+            }
+        }
+    }
+}
+
+function formatTimeDisplay(hour, min) {
+    const hourStr = hour.toString().padStart(2, '0');
+    const minStr = min.toString().padStart(2, '0');
+    return `${hourStr}:${minStr}`;
+}
+
+function parseTimeValue(timeStr) {
+    // Handle next day format (24:00+)
+    const [hours, mins] = timeStr.split(':').map(Number);
+    return { hours, mins, isNextDay: hours >= 24 };
+}
+
+function normalizeTimeForStorage(timeStr) {
+    // Convert 24+ hour format to normal format + isNextDay flag
+    const { hours, mins, isNextDay } = parseTimeValue(timeStr);
+    const normalHours = hours >= 24 ? hours - 24 : hours;
+    return {
+        time: `${normalHours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`,
+        isNextDay
+    };
+}
+
+function timeToSelectValue(time, isNextDay) {
+    // Convert stored time + isNextDay to select value
+    if (isNextDay) {
+        const [hours, mins] = time.split(':').map(Number);
+        return `${(hours + 24).toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+    }
+    return time;
+}
+
+// Generate filter time options (simpler version without "ไม่ระบุ" removal)
+function generateFilterTimeOptions(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    // Keep the first option (ไม่ระบุ)
+    const firstOption = select.querySelector('option');
+    select.innerHTML = '';
+    if (firstOption) {
+        select.appendChild(firstOption);
+    }
+
+    // Generate times from 00:00 to 23:30
+    for (let hour = 0; hour < 24; hour++) {
+        for (let min = 0; min < 60; min += 30) {
+            const timeStr = `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
+            const option = document.createElement('option');
+            option.value = timeStr;
+            option.textContent = timeStr;
+            select.appendChild(option);
+        }
+    }
+}
+
+// Initialize time selects on page load
+document.addEventListener('DOMContentLoaded', function () {
+    generateTimeOptions('shiftPresetStart', false);
+    generateTimeOptions('shiftPresetEnd', true);
+
+    // Filter time dropdowns
+    generateFilterTimeOptions('timeRangeFrom');
+    generateFilterTimeOptions('timeRangeTo');
+});
