@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบคัดแยกเวลาเข้า-ออกงาน</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon">⏰</div>
+                    <h1>ระบบคัดแยกเวลาเข้า-ออกงาน</h1>
+                </div>
+                <p class="subtitle">Time Attendance Management System</p>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- File Upload Section -->
+            <section class="upload-section glass-card">
+                <h2><span class="icon">📁</span> นำเข้าข้อมูล</h2>
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="fileInput" accept=".txt" hidden>
+                    <div class="upload-content">
+                        <div class="upload-icon">📄</div>
+                        <p>คลิกเพื่อเลือกไฟล์ หรือลากไฟล์มาวางที่นี่</p>
+                        <span class="file-types">รองรับไฟล์ .txt</span>
+                    </div>
+                </div>
+                <div id="fileInfo" class="file-info hidden"></div>
+            </section>
+
+            <!-- Shift Settings Button (Opens Modal) -->
+            <section class="shift-button-section" id="shiftButtonSection" style="display: none;">
+                <button id="openShiftModal" class="btn btn-settings">
+                    <span>⚙️</span> ตั้งค่ากะการทำงาน (ค่าเริ่มต้น)
+                </button>
+                <span class="current-shift-info">
+                    กะปัจจุบัน: <strong id="currentShiftLabel">เช้า (9 ชม. + พัก 1 ชม.)</strong>
+                </span>
+            </section>
+
+            <!-- Filter Section -->
+            <section class="filter-section glass-card" id="filterSection" style="display: none;">
+                <h2><span class="icon">🔍</span> กรองข้อมูล</h2>
+                <div class="filter-grid">
+                    <div class="filter-group">
+                        <label for="dateFilter">เลือกวันที่</label>
+                        <select id="dateFilter">
+                            <option value="">ทุกวัน</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="employeeFilter">เลือกพนักงาน</label>
+                        <select id="employeeFilter">
+                            <option value="">ทุกคน</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="timeRangeFrom">ช่วงเวลา (เริ่มต้น)</label>
+                        <input type="time" id="timeRangeFrom">
+                    </div>
+                    <div class="filter-group">
+                        <label for="timeRangeTo">ช่วงเวลา (สิ้นสุด)</label>
+                        <input type="time" id="timeRangeTo">
+                    </div>
+                </div>
+                <div class="filter-actions">
+                    <button id="applyFilter" class="btn btn-primary">
+                        <span>🔍</span> กรองข้อมูล
+                    </button>
+                    <button id="resetFilter" class="btn btn-secondary">
+                        <span>🔄</span> รีเซ็ต
+                    </button>
+                    <button id="exportBtn" class="btn btn-success">
+                        <span>📊</span> ส่งออก CSV
+                    </button>
+                </div>
+            </section>
+
+            <!-- Summary Stats -->
+            <section class="stats-section" id="statsSection" style="display: none;">
+                <div class="stat-card glass-card">
+                    <div class="stat-icon employees">👥</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="totalEmployees">0</span>
+                        <span class="stat-label">พนักงานทั้งหมด</span>
+                    </div>
+                </div>
+                <div class="stat-card glass-card">
+                    <div class="stat-icon records">📋</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="totalRecords">0</span>
+                        <span class="stat-label">รายการสแกน</span>
+                    </div>
+                </div>
+                <div class="stat-card glass-card">
+                    <div class="stat-icon days">📅</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="totalDays">0</span>
+                        <span class="stat-label">วันทำงาน</span>
+                    </div>
+                </div>
+                <div class="stat-card glass-card">
+                    <div class="stat-icon filtered">🎯</div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="filteredRecords">0</span>
+                        <span class="stat-label">รายการที่แสดง</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- View Toggle -->
+            <section class="view-toggle" id="viewToggle" style="display: none;">
+                <button id="tableViewBtn" class="view-btn active">
+                    <span>📊</span> มุมมองตาราง
+                </button>
+                <button id="personalViewBtn" class="view-btn">
+                    <span>👤</span> มุมมองรายบุคคล
+                </button>
+                <button id="timelineViewBtn" class="view-btn">
+                    <span>📅</span> มุมมองไทม์ไลน์
+                </button>
+            </section>
+
+            <!-- Table View -->
+            <section class="data-section glass-card" id="tableView" style="display: none;">
+                <h2><span class="icon">📊</span> ข้อมูลการสแกนทั้งหมด</h2>
+                <div class="table-container">
+                    <table id="attendanceTable">
+                        <thead>
+                            <tr>
+                                <th>ลำดับ</th>
+                                <th>รหัสเครื่อง</th>
+                                <th>รหัสพนักงาน</th>
+                                <th>ชื่อพนักงาน</th>
+                                <th>วันที่</th>
+                                <th>เวลา</th>
+                                <th>สถานะ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Personal View -->
+            <section class="data-section" id="personalView" style="display: none;">
+                <h2 class="section-title"><span class="icon">👤</span> ข้อมูลรายบุคคล</h2>
+                <div id="personalCards" class="personal-cards-grid">
+                </div>
+            </section>
+
+            <!-- Timeline View -->
+            <section class="data-section" id="timelineView" style="display: none;">
+                <h2 class="section-title glass-card"><span class="icon">📅</span> ไทม์ไลน์รายวัน</h2>
+                <div id="timelineContainer" class="timeline-container">
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>© 2025 ระบบคัดแยกเวลาเข้า-ออกงาน | Developed with omsincode</p>
+        </footer>
+    </div>
+
+    <!-- Employee Detail Modal -->
+    <div id="employeeModal" class="modal">
+        <div class="modal-content modal-content-large">
+            <div class="modal-header">
+                <h2 id="modalEmployeeName">ชื่อพนักงาน</h2>
+                <span id="modalEmployeeId" class="modal-id">ID: 00000000</span>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+
+            <!-- Individual Shift Settings -->
+            <div class="modal-shift-settings">
+                <div class="shift-settings-header">
+                    <span class="icon">⚙️</span>
+                    <span>ตั้งค่ากะสำหรับพนักงานคนนี้</span>
+                    <button id="toggleShiftSettings" class="btn-toggle">▼</button>
+                </div>
+                <div class="shift-settings-body" id="individualShiftBody" style="display: none;">
+                    <div class="shift-inline-row">
+                        <div class="shift-inline-group">
+                            <label>ชั่วโมงทำงาน</label>
+                            <input type="number" id="modalWorkHours" value="9" min="1" max="24">
+                            <span>ชม.</span>
+                        </div>
+                        <div class="shift-inline-group">
+                            <label>เวลาพัก</label>
+                            <input type="number" id="modalBreakHours" value="1" min="0" max="4" step="0.5">
+                            <span>ชม.</span>
+                        </div>
+                        <div class="shift-inline-group checkbox-group">
+                            <label>
+                                <input type="checkbox" id="modalNextDay">
+                                ข้ามวัน
+                            </label>
+                        </div>
+                        <button id="applyIndividualShift" class="btn btn-primary btn-sm">
+                            <span>✓</span> ใช้งาน
+                        </button>
+                    </div>
+                    <div class="shift-presets-inline">
+                        <button class="preset-btn-sm" data-work="9" data-break="1" data-nextday="false">เช้า
+                            (9+1)</button>
+                        <button class="preset-btn-sm" data-work="10" data-break="1" data-nextday="true">ดึก
+                            (10+1)</button>
+                        <button class="preset-btn-sm" data-work="8" data-break="1" data-nextday="false">กลางวัน
+                            (8+1)</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-body">
+                <div class="table-container">
+                    <table id="employeeDetailTable">
+                        <thead>
+                            <tr>
+                                <th>วันที่</th>
+                                <th>เข้างาน</th>
+                                <th>เบรกออก</th>
+                                <th>เบรกเข้า</th>
+                                <th>เลิกงาน</th>
+                                <th>OT</th>
+                            </tr>
+                        </thead>
+                        <tbody id="employeeDetailBody">
+                        </tbody>
+                        <tfoot>
+                            <tr class="total-row">
+                                <td><strong>รวม</strong></td>
+                                <td id="totalDaysWorked">-</td>
+                                <td>-</td>
+                                <td>-</td>
+                                <td>-</td>
+                                <td id="totalOT">-</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Shift Settings Modal -->
+    <div id="shiftSettingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚙️ ตั้งค่ากะการทำงาน (ค่าเริ่มต้น)</h2>
+                <button class="modal-close" id="shiftModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="shift-note">การตั้งค่านี้จะใช้เป็นค่าเริ่มต้นสำหรับพนักงานทุกคน
+                    สามารถปรับรายบุคคลได้ในหน้ารายละเอียด</p>
+
+                <div class="shift-form">
+                    <div class="shift-form-row">
+                        <div class="shift-form-group">
+                            <label for="globalWorkHours">ชั่วโมงทำงาน</label>
+                            <input type="number" id="globalWorkHours" value="9" min="1" max="24">
+                            <span class="unit">ชม.</span>
+                        </div>
+                        <div class="shift-form-group">
+                            <label for="globalBreakHours">เวลาพัก</label>
+                            <input type="number" id="globalBreakHours" value="1" min="0" max="4" step="0.5">
+                            <span class="unit">ชม.</span>
+                        </div>
+                        <div class="shift-form-group checkbox-group">
+                            <label>
+                                <input type="checkbox" id="globalNextDay">
+                                ข้ามวัน (กะดึก)
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="preset-shifts-modal">
+                        <span class="preset-label">กะสำเร็จรูป:</span>
+                        <button class="preset-btn" data-work="9" data-break="1" data-nextday="false">🌅 เช้า
+                            (9+1)</button>
+                        <button class="preset-btn" data-work="10" data-break="1" data-nextday="true">🌙 ดึก
+                            (10+1)</button>
+                        <button class="preset-btn" data-work="8" data-break="1" data-nextday="false">☀️ กลางวัน
+                            (8+1)</button>
+                    </div>
+
+                    <button id="saveGlobalShift" class="btn btn-primary btn-full">
+                        <span>💾</span> บันทึกการตั้งค่า
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
